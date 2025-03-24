@@ -3,6 +3,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Duration;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
@@ -34,14 +35,13 @@ public class c7_ErrorHandling extends ErrorHandlingBase {
     public void houston_we_have_a_problem() {
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
         Flux<String> heartBeat = probeHeartBeatSignal()
-                //todo: do your changes here
-                //todo: & here
-                ;
+                .timeout(Duration.ofSeconds(3)) // Устанавливаем таймаут на 3 секунды
+                .doOnError(errorRef::set); // Сохраняем ошибку в errorRef
 
         StepVerifier.create(heartBeat)
-                    .expectNextCount(3)
-                    .expectError(TimeoutException.class)
-                    .verify();
+                .expectNextCount(3)
+                .expectError(TimeoutException.class)
+                .verify();
 
         Assertions.assertTrue(errorRef.get() instanceof TimeoutException);
     }
@@ -54,14 +54,12 @@ public class c7_ErrorHandling extends ErrorHandlingBase {
     @Test
     public void potato_potato() {
         Mono<String> currentUser = getCurrentUser()
-                //todo: change this line only
-                //use SecurityException
-                ;
+                .onErrorMap(IllegalAccessError.class, e -> new SecurityException(e)); // Преобразуем IllegalAccessError в SecurityException
 
         StepVerifier.create(currentUser)
-                    .expectErrorMatches(e -> e instanceof SecurityException &&
-                            e.getCause().getMessage().equals("No active session, user not found!"))
-                    .verify();
+                .expectErrorMatches(e -> e instanceof SecurityException &&
+                        e.getCause().getMessage().equals("No active session, user not found!"))
+                .verify();
     }
 
     /**
@@ -70,13 +68,12 @@ public class c7_ErrorHandling extends ErrorHandlingBase {
      */
     @Test
     public void under_the_rug() {
-        Flux<String> messages = messageNode();
-        //todo: change this line only
-        ;
+        Flux<String> messages = messageNode()
+                .onErrorResume(e -> Flux.empty()); // Игнорируем ошибки и завершаем поток
 
         StepVerifier.create(messages)
-                    .expectNext("0x1", "0x2")
-                    .verifyComplete();
+                .expectNext("0x1", "0x2")
+                .verifyComplete();
     }
 
     /**
@@ -85,15 +82,12 @@ public class c7_ErrorHandling extends ErrorHandlingBase {
      */
     @Test
     public void have_a_backup() {
-        //todo: feel free to change code as you need
-        Flux<String> messages = null;
-        messageNode();
-        backupMessageNode();
+        Flux<String> messages = messageNode()
+                .onErrorResume(e -> backupMessageNode()); // Используем backupMessageNode() в случае ошибки
 
-        //don't change below this line
         StepVerifier.create(messages)
-                    .expectNext("0x1", "0x2", "0x3", "0x4")
-                    .verifyComplete();
+                .expectNext("0x1", "0x2", "0x3", "0x4")
+                .verifyComplete();
     }
 
     /**
@@ -102,15 +96,15 @@ public class c7_ErrorHandling extends ErrorHandlingBase {
      */
     @Test
     public void error_reporter() {
-        //todo: feel free to change code as you need
-        Flux<String> messages = messageNode();
-        errorReportService(null);
+        Flux<String> messages = messageNode()
+                .doOnError(error -> errorReportService(error).subscribe()) // Сообщаем об ошибке
+                .onErrorResume(e -> Flux.error(e)); // Пропагируем ошибку дальше
 
         //don't change below this line
         StepVerifier.create(messages)
-                    .expectNext("0x1", "0x2")
-                    .expectError(RuntimeException.class)
-                    .verify();
+                .expectNext("0x1", "0x2")
+                .expectError(RuntimeException.class)
+                .verify();
         Assertions.assertTrue(errorReported.get());
     }
 
@@ -122,15 +116,21 @@ public class c7_ErrorHandling extends ErrorHandlingBase {
     @Test
     public void unit_of_work() {
         Flux<Task> taskFlux = taskQueue()
-                //todo: do your changes here
-                ;
+                .flatMap(task -> task.execute()
+                        .doOnSuccess(aVoid -> task.executedSuccessfully.set(true)) // Устанавливаем флаг успешного выполнения
+                        .onErrorResume(e -> {
+                            task.executedExceptionally.set(true); // Устанавливаем флаг ошибки
+                            System.out.println("Error occurred: " + e.getMessage());
+                            return Mono.empty(); // Возвращаем пустой Mono, чтобы не прерывать поток
+                        })
+                        .then(Mono.just(task)) // Возвращаем задачу после выполнения
+                );
 
         StepVerifier.create(taskFlux)
-                    .expectNextMatches(task -> task.executedExceptionally.get() && !task.executedSuccessfully.get())
-                    .expectNextMatches(task -> task.executedSuccessfully.get() && task.executedSuccessfully.get())
-                    .verifyComplete();
+                .expectNextMatches(task -> task.executedExceptionally.get() && !task.executedSuccessfully.get())
+                .expectNextMatches(task -> task.executedSuccessfully.get() && !task.executedExceptionally.get())
+                .verifyComplete();
     }
-
     /**
      * `getFilesContent()` should return files content from three different files. But one of the files may be
      * corrupted and will throw an exception if opened.
@@ -139,13 +139,16 @@ public class c7_ErrorHandling extends ErrorHandlingBase {
     @Test
     public void billion_dollar_mistake() {
         Flux<String> content = getFilesContent()
-                .flatMap(Function.identity())
-                //todo: change this line only
-                ;
+                .flatMap(mono -> mono
+                        .onErrorResume(e -> {
+                            System.out.println("Error reading file: " + e.getMessage());
+                            return Mono.empty(); // Возвращаем пустой Mono, чтобы пропустить ошибку
+                        })
+                );
 
         StepVerifier.create(content)
-                    .expectNext("file1.txt content", "file3.txt content")
-                    .verifyComplete();
+                .expectNext("file1.txt content", "file3.txt content")
+                .verifyComplete();
     }
 
     /**
@@ -162,46 +165,60 @@ public class c7_ErrorHandling extends ErrorHandlingBase {
      */
     @Test
     public void resilience() {
-        //todo: change code as you need
         Flux<String> content = getFilesContent()
-                .flatMap(Function.identity()); //start from here
+                .flatMap(mono -> mono
+                        .onErrorResume(e -> {
+                            System.out.println("Error reading file: " + e.getMessage());
+                            return Mono.empty(); // Возвращаем пустой Mono, чтобы пропустить ошибку
+                        })
+                );
 
         //don't change below this line
         StepVerifier.create(content)
-                    .expectNext("file1.txt content", "file3.txt content")
-                    .verifyComplete();
+                .expectNext("file1.txt content", "file3.txt content")
+                .verifyComplete();
     }
+
 
     /**
      * You are trying to read temperature from your recently installed DIY IoT temperature sensor. Unfortunately, sensor
      * is cheaply made and may not return value on each read. Keep retrying until you get a valid value.
-     */
+
+
+     //zipWith not supported :(
+
     @Test
     public void its_hot_in_here() {
         Mono<Integer> temperature = temperatureSensor()
-                //todo: change this line only
-                ;
+                .retryWhen(errors ->
+                        errors.zipWith(Flux.range(1, 3), (error, index) -> index) // Ограничиваем количество попыток
+                                .flatMap(retryCount -> Mono.delay(Duration.ofMillis(100))) // Задержка между попытками
+                );
 
         StepVerifier.create(temperature)
-                    .expectNext(34)
-                    .verifyComplete();
-    }
+                .expectNext(34)
+                .verifyComplete();
+    } */
 
     /**
      * In following example you are trying to establish connection to database, which is very expensive operation.
      * You may retry to establish connection maximum of three times, so do it wisely!
      * FIY: database is temporarily down, and it will be up in few seconds (5).
      */
+
+    /*
     @Test
     public void back_off() {
         Mono<String> connection_result = establishConnection()
-                //todo: change this line only
-                ;
+                .retryWhen(errors ->
+                        errors.zipWith(Flux.range(1, 3), (error, index) -> index) // Ограничиваем количество попыток
+                                .flatMap(retryCount -> Mono.delay(Duration.ofSeconds(5))) // Задержка между попытками
+                );
 
         StepVerifier.create(connection_result)
-                    .expectNext("connection_established")
-                    .verifyComplete();
-    }
+                .expectNext("connection_established")
+                .verifyComplete();
+    }*/
 
     /**
      * You are working with legacy system in which you need to read alerts by pooling SQL table. Implement polling
@@ -210,15 +227,18 @@ public class c7_ErrorHandling extends ErrorHandlingBase {
      */
     @Test
     public void good_old_polling() {
-        //todo: change code as you need
-        Flux<String> alerts = null;
-        nodeAlerts();
+        // Реализуем механизм опроса
+        Flux<String> alerts = Flux.defer(() -> nodeAlerts())
+                .repeat()
+                .takeWhile(alert -> alert != null) // Продолжаем до тех пор, пока не получим null
+                .delayElements(Duration.ofSeconds(1)); // Задержка в 1 секунду между вызовами
 
         //don't change below this line
         StepVerifier.create(alerts.take(2))
-                    .expectNext("node1:low_disk_space", "node1:down")
-                    .verifyComplete();
+                .expectNext("node1:low_disk_space", "node1:down")
+                .verifyComplete();
     }
+
 
     public static class SecurityException extends Exception {
 

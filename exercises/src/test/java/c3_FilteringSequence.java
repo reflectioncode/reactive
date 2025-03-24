@@ -40,13 +40,12 @@ public class c3_FilteringSequence extends FilteringSequenceBase {
      */
     @Test
     public void needle_in_a_haystack() {
-        Flux<String> strings = null;
-        mashed_data_service()
-                .ofType(String.class);                ;
+        Flux<String> strings = mashed_data_service()
+                .ofType(String.class); // Используем ofType для фильтрации объектов типа String
 
         StepVerifier.create(strings)
-                    .expectNext("1", "String.class")
-                    .verifyComplete();
+                .expectNext("1", "String.class")
+                .verifyComplete();
     }
 
     /**
