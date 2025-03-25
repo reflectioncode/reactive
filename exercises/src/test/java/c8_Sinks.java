@@ -33,17 +33,17 @@ public class c8_Sinks extends SinksBase {
      */
     @Test
     public void single_shooter() {
-        //todo: feel free to change code as you need
-        Mono<Boolean> operationCompleted = null;
-        submitOperation(() -> {
-
-            doSomeWork(); //don't change this line
+        Mono<Boolean> operationCompleted = Mono.create(sink -> {
+            submitOperation(() -> {
+                doSomeWork(); //don't change this line
+                sink.success(true); // Уведомляем, что операция завершена
+            });
         });
 
         //don't change code below
         StepVerifier.create(operationCompleted.timeout(Duration.ofMillis(5500)))
-                    .expectNext(true)
-                    .verifyComplete();
+                .expectNext(true)
+                .verifyComplete();
     }
 
     /**
@@ -54,18 +54,18 @@ public class c8_Sinks extends SinksBase {
      */
     @Test
     public void single_subscriber() {
-        //todo: feel free to change code as you need
-        Flux<Integer> measurements = null;
-        submitOperation(() -> {
-
-            List<Integer> measures_readings = get_measures_readings(); //don't change this line
+        Flux<Integer> measurements = Flux.create(sink -> {
+            submitOperation(() -> {
+                List<Integer> measures_readings = get_measures_readings(); //don't change this line
+                measures_readings.forEach(sink::next); // Эмитируем каждое измерение
+                sink.complete(); // Завершаем поток
+            });
         });
 
         //don't change code below
-        StepVerifier.create(measurements
-                                    .delaySubscription(Duration.ofSeconds(6)))
-                    .expectNext(0x0800, 0x0B64, 0x0504)
-                    .verifyComplete();
+        StepVerifier.create(measurements.delaySubscription(Duration.ofSeconds(6)))
+                .expectNext(0x0800, 0x0B64, 0x0504)
+                .verifyComplete();
     }
 
     /**
@@ -74,19 +74,21 @@ public class c8_Sinks extends SinksBase {
      */
     @Test
     public void it_gets_crowded() {
-        //todo: feel free to change code as you need
-        Flux<Integer> measurements = null;
-        submitOperation(() -> {
+        Sinks.Many<Integer> sink = Sinks.many().multicast().onBackpressureBuffer(); // Создаем мультикастовый Sink
 
+        submitOperation(() -> {
             List<Integer> measures_readings = get_measures_readings(); //don't change this line
+            measures_readings.forEach(sink::tryEmitNext); // Эмитируем каждое измерение
+            sink.tryEmitComplete(); // Завершаем поток
         });
 
+        Flux<Integer> measurements = sink.asFlux(); // Преобразуем Sink в Flux
+
         //don't change code below
-        StepVerifier.create(Flux.merge(measurements
-                                               .delaySubscription(Duration.ofSeconds(1)),
-                                       measurements.ignoreElements()))
-                    .expectNext(0x0800, 0x0B64, 0x0504)
-                    .verifyComplete();
+        StepVerifier.create(Flux.merge(measurements.delaySubscription(Duration.ofSeconds(1)),
+                        measurements.ignoreElements()))
+                .expectNext(0x0800, 0x0B64, 0x0504)
+                .verifyComplete();
     }
 
     /**

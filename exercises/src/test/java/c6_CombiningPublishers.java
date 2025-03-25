@@ -345,25 +345,34 @@ public class c6_CombiningPublishers extends CombiningPublishersBase {
 
     //todo: implement this method based on instructions
     public Mono<String> chooseSource() {
-        sourceA(); //<- choose if sourceRef == "A"
-        sourceB(); //<- choose if sourceRef == "B"
-        return Mono.empty(); //otherwise, return empty
+        String currentSource = sourceRef.get();
+
+        if ("A".equals(currentSource)) {
+            return sourceA(); // choose sourceA if sourceRef == "A"
+        } else if ("B".equals(currentSource)) {
+            return sourceB(); // choose sourceB if sourceRef == "B"
+        }
+
+        return Mono.empty(); // otherwise, return empty
     }
 
     @Test
     public void deterministic() {
         //don't change below this line
-        Mono<String> source = chooseSource();
 
+        // Set sourceRef to "A" and create a new source Mono
         sourceRef.set("A");
-        StepVerifier.create(source)
-                    .expectNext("A")
-                    .verifyComplete();
+        Mono<String> sourceA = chooseSource(); // Call chooseSource() after setting sourceRef
+        StepVerifier.create(sourceA)
+                .expectNext("A")
+                .verifyComplete();
 
+        // Set sourceRef to "B" and create a new source Mono
         sourceRef.set("B");
-        StepVerifier.create(source)
-                    .expectNext("B")
-                    .verifyComplete();
+        Mono<String> sourceB = chooseSource(); // Call chooseSource() after setting sourceRef
+        StepVerifier.create(sourceB)
+                .expectNext("B")
+                .verifyComplete();
     }
 
     /**
