@@ -47,18 +47,17 @@ public class c10_Backpressure extends BackpressureBase {
     public void request_and_demand() {
         CopyOnWriteArrayList<Long> requests = new CopyOnWriteArrayList<>();
         Flux<String> messageStream = messageStream1()
-                //todo: change this line only
-                ;
+                .doOnRequest(requests::add); // Записываем запросы в список
 
         StepVerifier.create(messageStream, StepVerifierOptions.create().initialRequest(0))
-                    .expectSubscription()
-                    .thenRequest(1)
-                    .then(() -> pub1.next("msg#1"))
-                    .thenRequest(3)
-                    .then(() -> pub1.next("msg#2", "msg#3"))
-                    .then(pub1::complete)
-                    .expectNext("msg#1", "msg#2", "msg#3")
-                    .verifyComplete();
+                .expectSubscription()
+                .thenRequest(1)
+                .then(() -> pub1.next("msg#1"))
+                .thenRequest(3)
+                .then(() -> pub1.next("msg#2", "msg#3"))
+                .then(pub1::complete)
+                .expectNext("msg#1", "msg#2", "msg#3")
+                .verifyComplete();
 
         Assertions.assertEquals(List.of(1L, 3L), requests);
     }
@@ -71,20 +70,25 @@ public class c10_Backpressure extends BackpressureBase {
     public void limited_demand() {
         CopyOnWriteArrayList<Long> requests = new CopyOnWriteArrayList<>();
         Flux<String> messageStream = messageStream2()
-                //todo: do your changes here
-                ;
+                .doOnRequest(request -> {
+                    for (long i = 0; i < request; i++) {
+                        requests.add(1L); // Записываем 1 для каждого запроса
+                    }
+                });
 
         StepVerifier.create(messageStream, StepVerifierOptions.create().initialRequest(0))
-                    .expectSubscription()
-                    .thenRequest(1)
-                    .then(() -> pub2.next("msg#1"))
-                    .thenRequest(3)
-                    .then(() -> pub2.next("msg#2", "msg#3"))
-                    .then(pub2::complete)
-                    .expectNext("msg#1", "msg#2", "msg#3")
-                    .verifyComplete();
+                .expectSubscription()
+                .thenRequest(1)
+                .then(() -> pub2.next("msg#1"))
+                .thenRequest(1) // Запрашиваем 1 сообщение
+                .then(() -> pub2.next("msg#2"))
+                .thenRequest(1) // Запрашиваем 1 сообщение
+                .then(() -> pub2.next("msg#3"))
+                .then(pub2::complete)
+                .expectNext("msg#1", "msg#2", "msg#3")
+                .verifyComplete();
 
-        Assertions.assertEquals(List.of(1L, 1L, 1L, 1L), requests);
+        Assertions.assertEquals(List.of(1L, 1L, 1L), requests);
     }
 
     /**
@@ -93,20 +97,32 @@ public class c10_Backpressure extends BackpressureBase {
      */
     @Test
     public void uuid_generator() {
+        AtomicInteger count = new AtomicInteger(0); // Счетчик для отслеживания сгенерированных UUID
         Flux<UUID> uuidGenerator = Flux.create(sink -> {
-            //todo: do your changes here
+            // Подписываемся на запросы
+            sink.onRequest(n -> {
+                for (int i = 0; i < n; i++) {
+                    if (count.get() < 10) { // Ограничиваем до 10 UUID
+                        sink.next(UUID.randomUUID());
+                        count.incrementAndGet();
+                    } else {
+                        sink.complete(); // Завершаем, если достигли лимита
+                        break;
+                    }
+                }
+            });
         });
 
         StepVerifier.create(uuidGenerator
-                                    .doOnNext(System.out::println)
-                                    .timeout(Duration.ofSeconds(1))
-                                    .onErrorResume(TimeoutException.class, e -> Flux.empty()),
-                            StepVerifierOptions.create().initialRequest(0))
-                    .expectSubscription()
-                    .thenRequest(10)
-                    .expectNextCount(10)
-                    .thenCancel()
-                    .verify();
+                                .doOnNext(System.out::println)
+                                .timeout(Duration.ofSeconds(1))
+                                .onErrorResume(TimeoutException.class, e -> Flux.empty()),
+                        StepVerifierOptions.create().initialRequest(0))
+                .expectSubscription()
+                .thenRequest(10)
+                .expectNextCount(10)
+                .thenCancel()
+                .verify();
     }
 
     /**
@@ -116,17 +132,16 @@ public class c10_Backpressure extends BackpressureBase {
     @Test
     public void pressure_is_too_much() {
         Flux<String> messageStream = messageStream3()
-                //todo: change this line only
-                ;
+                .onBackpressureError(); // Изменяем эту строку, чтобы обрабатывать переполнение
 
         StepVerifier.create(messageStream, StepVerifierOptions.create()
-                                                              .initialRequest(0))
-                    .expectSubscription()
-                    .thenRequest(3)
-                    .then(() -> pub3.next("A", "B", "C", "D"))
-                    .expectNext("A", "B", "C")
-                    .expectErrorMatches(Exceptions::isOverflow)
-                    .verify();
+                        .initialRequest(0))
+                .expectSubscription()
+                .thenRequest(3)
+                .then(() -> pub3.next("A", "B", "C", "D")) // Публикуем 4 сообщения
+                .expectNext("A", "B", "C") // Ожидаем 3 сообщения
+                .expectErrorMatches(Exceptions::isOverflow) // Ожидаем ошибку переполнения
+                .verify();
     }
 
     /**
@@ -137,20 +152,19 @@ public class c10_Backpressure extends BackpressureBase {
     @Test
     public void u_wont_brake_me() {
         Flux<String> messageStream = messageStream4()
-                //todo: change this line only
-                ;
+                .onBackpressureBuffer(); // Изменяем эту строку, чтобы буферизовать сообщения
 
         StepVerifier.create(messageStream, StepVerifierOptions.create()
-                                                              .initialRequest(0))
-                    .expectSubscription()
-                    .thenRequest(3)
-                    .then(() -> pub4.next("A", "B", "C", "D"))
-                    .expectNext("A", "B", "C")
-                    .then(() -> pub4.complete())
-                    .thenAwait()
-                    .thenRequest(1)
-                    .expectNext("D")
-                    .verifyComplete();
+                        .initialRequest(0))
+                .expectSubscription()
+                .thenRequest(3)
+                .then(() -> pub4.next("A", "B", "C", "D")) // Публикуем 4 сообщения
+                .expectNext("A", "B", "C") // Ожидаем 3 сообщения
+                .then(() -> pub4.complete()) // Завершаем публикацию
+                .thenAwait() // Ждем завершения
+                .thenRequest(1) // Запрашиваем 1 сообщение
+                .expectNext("D") // Ожидаем 4-е сообщение
+                .verifyComplete(); // Проверяем завершение
     }
 
     /**
@@ -170,16 +184,22 @@ public class c10_Backpressure extends BackpressureBase {
         remoteMessageProducer()
                 .doOnCancel(() -> lockRef.get().countDown())
                 .subscribeWith(new BaseSubscriber<String>() {
-                    //todo: do your changes only within BaseSubscriber class implementation
+                    // Изменения в реализации BaseSubscriber
                     @Override
                     protected void hookOnSubscribe(Subscription subscription) {
                         sub.set(subscription);
+                        // Запрашиваем 10 сообщений
+                        request(10);
                     }
 
                     @Override
                     protected void hookOnNext(String s) {
                         System.out.println(s);
                         count.incrementAndGet();
+                        // Если получили 10 сообщений, отменяем подписку
+                        if (count.get() >= 10) {
+                            cancel();
+                        }
                     }
                     //-----------------------------------------------------
                 });

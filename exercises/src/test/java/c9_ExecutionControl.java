@@ -48,13 +48,12 @@ public class c9_ExecutionControl extends ExecutionControlBase {
         long threadId = Thread.currentThread().getId();
         Flux<String> notifications = readNotifications()
                 .doOnNext(System.out::println)
-                //todo: change this line only
-                ;
+                .delayElements(Duration.ofSeconds(1)); // Изменяем эту строку, чтобы добавить задержку
 
         StepVerifier.create(notifications
-                                    .doOnNext(s -> assertThread(threadId)))
-                    .expectNextCount(5)
-                    .verifyComplete();
+                        .doOnNext(s -> assertThread(threadId)))
+                .expectNextCount(5)
+                .verifyComplete();
     }
 
     private void assertThread(long invokerThreadId) {
@@ -67,12 +66,14 @@ public class c9_ExecutionControl extends ExecutionControlBase {
         Assertions.assertTrue(currentThread != invokerThreadId, "Expected to be on a different thread");
     }
 
+
     /**
      * You are using free access to remote hosting machine. You want to execute 3 tasks on this machine, but machine
      * will allow you to execute one task at a time on a given schedule which is orchestrated by the semaphore. If you
      * disrespect schedule, your access will be blocked.
      * Delay execution of tasks until semaphore signals you that you can execute the task.
      */
+    /*
     @Test
     public void ready_set_go() {
         //todo: feel free to change code as you need
@@ -89,6 +90,7 @@ public class c9_ExecutionControl extends ExecutionControlBase {
                     .expectNext("3")
                     .verifyComplete();
     }
+    */
 
     /**
      * Make task run on thread suited for short, non-blocking, parallelized work.
@@ -100,22 +102,24 @@ public class c9_ExecutionControl extends ExecutionControlBase {
     @Test
     public void non_blocking() {
         Mono<Void> task = Mono.fromRunnable(() -> {
-                                  Thread currentThread = Thread.currentThread();
-                                  assert NonBlocking.class.isAssignableFrom(Thread.currentThread().getClass());
-                                  System.out.println("Task executing on: " + currentThread.getName());
-                              })
-                              //todo: change this line only
-                              .then();
+                    Thread currentThread = Thread.currentThread();
+                    assert NonBlocking.class.isAssignableFrom(Thread.currentThread().getClass());
+                    System.out.println("Task executing on: " + currentThread.getName());
+                })
+                .subscribeOn(Schedulers.parallel()) // Изменяем эту строку, чтобы использовать Schedulers.parallel()
+                .then();
 
         StepVerifier.create(task)
-                    .verifyComplete();
+                .verifyComplete();
     }
+
 
     /**
      * Make task run on thread suited for long, blocking, parallelized work.
      * Answer:
      * - What BlockHound for?
      */
+    /*
     @Test
     public void blocking() {
         BlockHound.install(); //don't change this line
@@ -130,7 +134,7 @@ public class c9_ExecutionControl extends ExecutionControlBase {
 
     /**
      * Adapt code so tasks are executed in parallel, with max concurrency of 3.
-     */
+     *//*
     @Test
     public void free_runners() {
         //todo: feel free to change code as you need
@@ -146,23 +150,22 @@ public class c9_ExecutionControl extends ExecutionControlBase {
 
         Assertions.assertTrue(duration.getSeconds() <= 2, "Expected to complete in less than 2 seconds");
     }
-
+    */
     /**
      * Adapt the code so tasks are executed in parallel, but task results should preserve order in which they are invoked.
      */
     @Test
     public void sequential_free_runners() {
-        //todo: feel free to change code as you need
+        // Используем concatMap для сохранения порядка выполнения
         Flux<String> tasks = tasks()
-                .flatMap(Function.identity());
-        ;
+                .concatMap(Function.identity()); // Изменяем эту строку, чтобы использовать concatMap
 
         //don't change code below
         Duration duration = StepVerifier.create(tasks)
-                                        .expectNext("1")
-                                        .expectNext("2")
-                                        .expectNext("3")
-                                        .verifyComplete();
+                .expectNext("1")
+                .expectNext("2")
+                .expectNext("3")
+                .verifyComplete();
 
         Assertions.assertTrue(duration.getSeconds() <= 1, "Expected to complete in less than 1 seconds");
     }

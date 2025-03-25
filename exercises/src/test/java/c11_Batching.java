@@ -1,5 +1,6 @@
 import org.junit.jupiter.api.*;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
 import java.time.Duration;
@@ -28,14 +29,14 @@ public class c11_Batching extends BatchingBase {
      */
     @Test
     public void batch_writer() {
-        //todo do your changes here
-        Flux<Void> dataStream = null;
-        dataStream();
-        writeToDisk(null);
+        // Создаем поток данных и разбиваем его на чанки по 10 элементов
+        Flux<Void> dataStream = dataStream()
+                .buffer(10) // Разбиваем на чанки по 10 элементов
+                .flatMap(this::writeToDisk); // Записываем каждый чанк на диск
 
-        //do not change the code below
+        // do not change the code below
         StepVerifier.create(dataStream)
-                    .verifyComplete();
+                .verifyComplete();
 
         Assertions.assertEquals(10, diskCounter.get());
     }
@@ -49,12 +50,13 @@ public class c11_Batching extends BatchingBase {
      */
     @Test
     public void command_gateway() {
-        //todo: implement your changes here
-        Flux<Void> processCommands = null;
-        inputCommandStream();
-        sendCommand(null);
+        // Группируем команды по aggregateId и обрабатываем их последовательно
+        Mono<Void> processCommands = inputCommandStream()
+                .groupBy(Command::getAggregateId) // Группируем команды по aggregateId
+                .flatMap(groupedFlux -> groupedFlux.concatMap(this::sendCommand)) // Обрабатываем команды последовательно в каждой группе
+                .then(); // Возвращаем Mono<Void> после завершения всех команд
 
-        //do not change the code below
+        // do not change the code below
         Duration duration = StepVerifier.create(processCommands)
                 .verifyComplete();
 
@@ -69,11 +71,12 @@ public class c11_Batching extends BatchingBase {
     @Test
     public void sum_over_time() {
         Flux<Long> metrics = metrics()
-                //todo: implement your changes here
-                .take(10);
+                .window(Duration.ofSeconds(1)) // Разделяем поток на окна по 1 секунде
+                .flatMap(window -> window.reduce(0L, Long::sum)) // Считаем сумму в каждом окне
+                .take(10); // Берем первые 10 значений
 
         StepVerifier.create(metrics)
-                    .expectNext(45L, 165L, 255L, 396L, 465L, 627L, 675L, 858L, 885L, 1089L)
-                    .verifyComplete();
+                .expectNext(45L, 165L, 255L, 396L, 465L, 627L, 675L, 858L, 885L, 1089L)
+                .verifyComplete();
     }
 }
