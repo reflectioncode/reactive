@@ -99,8 +99,7 @@ public class c8_Sinks extends SinksBase {
      */
     @Test
     public void open_24_7() {
-        //todo: set autoCancel parameter to prevent sink from closing
-        Sinks.Many<Integer> sink = Sinks.many().multicast().onBackpressureBuffer();
+        Sinks.Many<Integer> sink = Sinks.many().multicast().onBackpressureBuffer(10, false);
         Flux<Integer> flux = sink.asFlux();
 
         //don't change code below
@@ -111,23 +110,23 @@ public class c8_Sinks extends SinksBase {
 
         //subscriber1 subscribes, takes one element and cancels
         StepVerifier sub1 = StepVerifier.create(Flux.merge(flux.take(1)))
-                                        .expectNext(0x0800)
-                                        .expectComplete()
-                                        .verifyLater();
+                .expectNext(0x0800)
+                .expectComplete()
+                .verifyLater();
 
         //subscriber2 subscribes, takes one element and cancels
         StepVerifier sub2 = StepVerifier.create(Flux.merge(flux.take(1)))
-                                        .expectNext(0x0800)
-                                        .expectComplete()
-                                        .verifyLater();
+                .expectNext(0x0800)
+                .expectComplete()
+                .verifyLater();
 
         //subscriber3 subscribes after all previous subscribers have cancelled
         StepVerifier sub3 = StepVerifier.create(flux.take(3)
-                                                    .delaySubscription(Duration.ofSeconds(6)))
-                                        .expectNext(0x0B64) //first measurement `0x0800` was already consumed by previous subscribers
-                                        .expectNext(0x0504)
-                                        .expectComplete()
-                                        .verifyLater();
+                        .delaySubscription(Duration.ofSeconds(6)))
+                .expectNext(0x0B64) //first measurement `0x0800` was already consumed by previous subscribers
+                .expectNext(0x0504)
+                .expectComplete()
+                .verifyLater();
 
         sub1.verify();
         sub2.verify();
@@ -141,8 +140,7 @@ public class c8_Sinks extends SinksBase {
      */
     @Test
     public void blue_jeans() {
-        //todo: enable autoCancel parameter to prevent sink from closing
-        Sinks.Many<Integer> sink = Sinks.many().multicast().onBackpressureBuffer();
+        Sinks.Many<Integer> sink = Sinks.many().replay().all();
         Flux<Integer> flux = sink.asFlux();
 
         //don't change code below
@@ -153,24 +151,24 @@ public class c8_Sinks extends SinksBase {
 
         //subscriber1 subscribes, takes one element and cancels
         StepVerifier sub1 = StepVerifier.create(Flux.merge(flux.take(1)))
-                                        .expectNext(0x0800)
-                                        .expectComplete()
-                                        .verifyLater();
+                .expectNext(0x0800)
+                .expectComplete()
+                .verifyLater();
 
         //subscriber2 subscribes, takes one element and cancels
         StepVerifier sub2 = StepVerifier.create(Flux.merge(flux.take(1)))
-                                        .expectNext(0x0800)
-                                        .expectComplete()
-                                        .verifyLater();
+                .expectNext(0x0800)
+                .expectComplete()
+                .verifyLater();
 
         //subscriber3 subscribes after all previous subscribers have cancelled
         StepVerifier sub3 = StepVerifier.create(flux.take(3)
-                                                    .delaySubscription(Duration.ofSeconds(6)))
-                                        .expectNext(0x0800)
-                                        .expectNext(0x0B64)
-                                        .expectNext(0x0504)
-                                        .expectComplete()
-                                        .verifyLater();
+                        .delaySubscription(Duration.ofSeconds(6)))
+                .expectNext(0x0800)
+                .expectNext(0x0B64)
+                .expectNext(0x0504)
+                .expectComplete()
+                .verifyLater();
 
         sub1.verify();
         sub2.verify();
@@ -184,19 +182,19 @@ public class c8_Sinks extends SinksBase {
      */
     @Test
     public void emit_failure() {
-        //todo: feel free to change code as you need
         Sinks.Many<Integer> sink = Sinks.many().replay().all();
 
         for (int i = 1; i <= 50; i++) {
             int finalI = i;
-            new Thread(() -> sink.tryEmitNext(finalI)).start();
+            new Thread(() -> sink.emitNext(finalI, (signalType, emitResult) -> emitResult
+                    .equals(Sinks.EmitResult.FAIL_NON_SERIALIZED))).start();
         }
 
         //don't change code below
         StepVerifier.create(sink.asFlux()
-                                .doOnNext(System.out::println)
-                                .take(50))
-                    .expectNextCount(50)
-                    .verifyComplete();
+                        .doOnNext(System.out::println)
+                        .take(50))
+                .expectNextCount(50)
+                .verifyComplete();
     }
 }

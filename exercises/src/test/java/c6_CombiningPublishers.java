@@ -384,19 +384,16 @@ public class c6_CombiningPublishers extends CombiningPublishersBase {
      */
     @Test
     public void cleanup() {
-        BlockHound.install(); //don't change this line, blocking = cheating!
+        BlockHound.install();
 
-        // Open a connection to a streaming service
-        Flux<String> stream = StreamingConnection.startStreaming()
-                .flatMapMany(Function.identity())
-                .doFinally(signalType -> {
-                    // Close the connection after all elements have been consumed
-                    StreamingConnection.closeConnection().subscribe();
-                });
+        Flux<String> stream = Flux.usingWhen(
+                StreamingConnection.startStreaming(), //resource supplier -> supplies Flux from Mono
+                n -> n,//resource closure  -> closure in this case is same as Flux completion
+                tr -> StreamingConnection.closeConnection()//<-async complete, executes asynchronously after closure
+        );
 
-        //don't change below this line
         StepVerifier.create(stream)
-                .then(() -> Assertions.assertTrue(StreamingConnection.isOpen.get()))
+                .then(()-> Assertions.assertTrue(StreamingConnection.isOpen.get()))
                 .expectNextCount(20)
                 .verifyComplete();
         Assertions.assertTrue(StreamingConnection.cleanedUp.get());

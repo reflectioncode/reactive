@@ -73,24 +73,22 @@ public class c9_ExecutionControl extends ExecutionControlBase {
      * disrespect schedule, your access will be blocked.
      * Delay execution of tasks until semaphore signals you that you can execute the task.
      */
-    /*
+
     @Test
     public void ready_set_go() {
-        //todo: feel free to change code as you need
         Flux<String> tasks = tasks()
-                .flatMap(Function.identity());
-        semaphore();
+                .concatMap(task->task.delaySubscription(semaphore()));
+
 
         //don't change code below
         StepVerifier.create(tasks)
-                    .expectNext("1")
-                    .expectNoEvent(Duration.ofMillis(2000))
-                    .expectNext("2")
-                    .expectNoEvent(Duration.ofMillis(2000))
-                    .expectNext("3")
-                    .verifyComplete();
+                .expectNext("1")
+                .expectNoEvent(Duration.ofMillis(2000))
+                .expectNext("2")
+                .expectNoEvent(Duration.ofMillis(2000))
+                .expectNext("3")
+                .verifyComplete();
     }
-    */
 
     /**
      * Make task run on thread suited for short, non-blocking, parallelized work.
@@ -119,46 +117,48 @@ public class c9_ExecutionControl extends ExecutionControlBase {
      * Answer:
      * - What BlockHound for?
      */
-    /*
+
     @Test
     public void blocking() {
         BlockHound.install(); //don't change this line
 
         Mono<Void> task = Mono.fromRunnable(ExecutionControlBase::blockingCall)
-                              .subscribeOn(Schedulers.single())//todo: change this line only
-                              .then();
+                .subscribeOn(Schedulers.boundedElastic())
+                .then();
 
         StepVerifier.create(task)
-                    .verifyComplete();
+                .verifyComplete();
     }
+
 
     /**
      * Adapt code so tasks are executed in parallel, with max concurrency of 3.
-     *//*
+     */
     @Test
     public void free_runners() {
-        //todo: feel free to change code as you need
-        Mono<Void> task = Mono.fromRunnable(ExecutionControlBase::blockingCall);
+        Mono<Void> task = Mono.fromRunnable(ExecutionControlBase::blockingCall)
+                .subscribeOn(Schedulers.boundedElastic())
+                .then();
 
         Flux<Void> taskQueue = Flux.just(task, task, task)
-                                   .concatMap(Function.identity());
+                .flatMap(Function.identity(),3);
 
         //don't change code below
         Duration duration = StepVerifier.create(taskQueue)
-                                        .expectComplete()
-                                        .verify();
+                .expectComplete()
+                .verify();
 
         Assertions.assertTrue(duration.getSeconds() <= 2, "Expected to complete in less than 2 seconds");
     }
-    */
+
     /**
      * Adapt the code so tasks are executed in parallel, but task results should preserve order in which they are invoked.
      */
     @Test
     public void sequential_free_runners() {
-        // Используем concatMap для сохранения порядка выполнения
         Flux<String> tasks = tasks()
-                .concatMap(Function.identity()); // Изменяем эту строку, чтобы использовать concatMap
+                .flatMapSequential(Function.identity())
+                .doOnNext(System.out::println);
 
         //don't change code below
         Duration duration = StepVerifier.create(tasks)
@@ -177,27 +177,29 @@ public class c9_ExecutionControl extends ExecutionControlBase {
      */
     @Test
     public void event_processor() {
-        //todo: feel free to change code as you need
         Flux<String> eventStream = eventProcessor()
+                .parallel()
+                .runOn(Schedulers.parallel())
                 .filter(event -> event.metaData.length() > 0)
                 .doOnNext(event -> System.out.println("Mapping event: " + event.metaData))
                 .map(this::toJson)
+                .sequential()
                 .concatMap(n -> appendToStore(n).thenReturn(n));
 
         //don't change code below
         StepVerifier.create(eventStream)
-                    .expectNextCount(250)
-                    .verifyComplete();
+                .expectNextCount(250)
+                .verifyComplete();
 
         List<String> steps = Scannable.from(eventStream)
-                                      .parents()
-                                      .map(Object::toString)
-                                      .collect(Collectors.toList());
+                .parents()
+                .map(Object::toString)
+                .collect(Collectors.toList());
 
         String last = Scannable.from(eventStream)
-                               .steps()
-                               .collect(Collectors.toCollection(LinkedList::new))
-                               .getLast();
+                .steps()
+                .collect(Collectors.toCollection(LinkedList::new))
+                .getLast();
 
         Assertions.assertEquals("concatMap", last);
         Assertions.assertTrue(steps.contains("ParallelMap"), "Map operator not executed in parallel");

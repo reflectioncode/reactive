@@ -2,6 +2,7 @@ import org.junit.jupiter.api.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
+import reactor.util.retry.Retry;
 
 import java.time.Duration;
 import java.util.concurrent.TimeoutException;
@@ -185,20 +186,17 @@ public class c7_ErrorHandling extends ErrorHandlingBase {
      * is cheaply made and may not return value on each read. Keep retrying until you get a valid value.
 
 
-     //zipWith not supported :(
+     //zipWith not supported :( */
 
     @Test
     public void its_hot_in_here() {
         Mono<Integer> temperature = temperatureSensor()
-                .retryWhen(errors ->
-                        errors.zipWith(Flux.range(1, 3), (error, index) -> index) // Ограничиваем количество попыток
-                                .flatMap(retryCount -> Mono.delay(Duration.ofMillis(100))) // Задержка между попытками
-                );
+                .retry();
 
         StepVerifier.create(temperature)
                 .expectNext(34)
                 .verifyComplete();
-    } */
+    }
 
     /**
      * In following example you are trying to establish connection to database, which is very expensive operation.
@@ -206,19 +204,16 @@ public class c7_ErrorHandling extends ErrorHandlingBase {
      * FIY: database is temporarily down, and it will be up in few seconds (5).
      */
 
-    /*
+
     @Test
     public void back_off() {
         Mono<String> connection_result = establishConnection()
-                .retryWhen(errors ->
-                        errors.zipWith(Flux.range(1, 3), (error, index) -> index) // Ограничиваем количество попыток
-                                .flatMap(retryCount -> Mono.delay(Duration.ofSeconds(5))) // Задержка между попытками
-                );
+                .retryWhen(Retry.backoff(3, Duration.ofSeconds(3)));
 
         StepVerifier.create(connection_result)
                 .expectNext("connection_established")
                 .verifyComplete();
-    }*/
+    }
 
     /**
      * You are working with legacy system in which you need to read alerts by pooling SQL table. Implement polling
